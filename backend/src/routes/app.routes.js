@@ -4,6 +4,7 @@ const { z } = require('zod');
 const prisma = require('../lib/prisma');
 const auth = require('../middleware/auth');
 const { enrollFace, compareFace } = require('../lib/face');
+const { evaluateRisk } = require('../lib/agent');
 
 const router = express.Router();
 router.use(auth);
@@ -129,6 +130,52 @@ router.post('/transactions/verify', async (req, res, next) => {
       method = 'FALLBACK';
     }
 
+    const risk = await evaluateRisk({
+  transactionId: tx.id,
+  amount,
+  balanceBeforePayment: balance,
+  balanceAfterPayment: balance - amount,
+  verificationMethod: method,
+  faceConfidence: confidence,
+  faceEnrolled: user.faceEnrollmentStatus === 'ENROLLED',
+  recipient: tx.recipient,
+  location: 'Malaysia',
+  deviceKnown: false,
+});
+
+const decision = String(risk.decision || '').trim().toUpperCase();
+
+if (decision === 'BLOCK') {
+  const blocked = await prisma.transaction.update({
+    where: { id: tx.id },
+    data: {
+      status: 'FAILED',
+      failureReason: risk.reason || 'Blocked by AI risk agent',
+    },
+  });
+
+  return res.status(403).json({
+    message: 'Payment blocked by AI risk agent',
+    risk,
+    transaction: blocked,
+  });
+}
+
+if (
+  ['REQUIRE_VERIFICATION', 'REQUIRE_EXTRA_VERIFICATION', 'CHALLENGE'].includes(decision) &&
+  method !== 'FALLBACK'
+) {
+  return res.status(200).json({
+    message: 'Additional verification required',
+    requiresExtraVerification: true,
+    risk: {
+      ...risk,
+      decision,
+    },
+    nextStep: 'fallback_passcode',
+  });
+}
+
     const updated = await prisma.$transaction(async (db) => {
       await db.user.update({ where: { id: user.id }, data: { walletBalance: balance - amount } });
       return db.transaction.update({
@@ -137,7 +184,11 @@ router.post('/transactions/verify', async (req, res, next) => {
       });
     });
 
-    res.json({ message: 'Payment authorized', transaction: updated });
+    res.json({
+  message: 'Payment authorized',
+  transaction: updated,
+  risk,
+});
   } catch (err) {
     next(err);
   }
