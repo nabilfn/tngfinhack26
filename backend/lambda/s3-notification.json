@@ -1,0 +1,28 @@
+{
+  "LambdaFunctionConfigurations": [
+    {
+      "Id": "enroll-trigger",
+      "LambdaFunctionArn": "arn:aws:lambda:ap-southeast-1:186099270139:function:facepay-enroll",
+      "Events": ["s3:ObjectCreated:*"],
+      "Filter": {
+        "Key": {
+          "FilterRules": [
+            { "Name": "prefix", "Value": "enrollments/" }
+          ]
+        }
+      }
+    },
+    {
+      "Id": "verify-trigger",
+      "LambdaFunctionArn": "arn:aws:lambda:ap-southeast-1:186099270139:function:facepay-verify",
+      "Events": ["s3:ObjectCreated:*"],
+      "Filter": {
+        "Key": {
+          "FilterRules": [
+            { "Name": "prefix", "Value": "verifications/" }
+          ]
+        }
+      }
+    }
+  ]
+}
