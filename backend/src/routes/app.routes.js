@@ -1,4 +1,6 @@
+require('dotenv').config(); // Ensure env variables are loaded
 const router = require('express').Router();
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const prisma = require('../services/prisma');
 const auth = require('../middleware/auth');
@@ -6,6 +8,35 @@ const { createTxSchema, facePaySchema, passcodeSchema, transactionIdSchema } = r
 const { compareFaces } = require('../services/rekognition.service');
 const { Prisma } = require('@prisma/client');
 
+// ============================================================================
+// ENCRYPTION SETUP
+// ============================================================================
+const keyString = process.env.ENCRYPTION_KEY;
+if (!keyString || keyString.length !== 64) {
+  console.warn("WARNING: ENCRYPTION_KEY is missing or invalid in .env. Transactions will fail.");
+}
+const ENCRYPTION_KEY = keyString ? Buffer.from(keyString, 'hex') : crypto.randomBytes(32);
+
+function encryptTransactionData(transactionObject) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+  
+  const transactionString = JSON.stringify(transactionObject);
+  let encryptedData = cipher.update(transactionString, 'utf8', 'hex');
+  encryptedData += cipher.final('hex');
+  
+  const authTag = cipher.getAuthTag().toString('hex');
+  
+  return {
+    encryptedData: encryptedData,
+    iv: iv.toString('hex'),
+    authTag: authTag
+  };
+}
+
+// ============================================================================
+// UTILS
+// ============================================================================
 router.use(auth);
 
 function toMoney(value) {
@@ -29,35 +60,136 @@ function serializeUser(user) {
   };
 }
 
+// ============================================================================
+// CORE TRANSACTION LOGIC (WITH CHECKER & ROLLBACK)
+// ============================================================================
 async function approveTransaction({ txId, userId, method, status, confidenceScore = null }) {
-  return prisma.$transaction(async (db) => {
-    const tx = await db.transaction.findFirst({
-      where: { id: txId, payerId: userId, status: 'PENDING' },
+  // 1. Fetch pending transaction
+  const tx = await prisma.transaction.findFirst({
+    where: { id: txId, payerId: userId, status: 'PENDING' },
+  });
+  if (!tx) throw Object.assign(new Error('Pending transaction not found'), { status: 404 });
+
+  // 2. Fetch Sender and Receiver (assuming tx.recipient holds the receiver's User ID)
+  const sender = await prisma.user.findUnique({ where: { id: userId } });
+  const receiver = await prisma.user.findUnique({ where: { id: tx.recipient } });
+
+  if (!sender) throw Object.assign(new Error('Sender not found'), { status: 404 });
+  if (!receiver) throw Object.assign(new Error('Recipient not found'), { status: 404 });
+
+  const senderInitialBalance = new Prisma.Decimal(sender.walletBalance);
+  const receiverInitialBalance = new Prisma.Decimal(receiver.walletBalance);
+  const amount = new Prisma.Decimal(tx.amount);
+
+  // 3. Encrypt the transaction record
+  const encryptedTx = encryptTransactionData({
+    txId: tx.id,
+    senderId: sender.id,
+    receiverId: receiver.id,
+    amount: amount.toString(),
+    method,
+    timestamp: Date.now()
+  });
+
+  // 4. Initial Balance Check
+  if (senderInitialBalance.lt(amount)) {
+    const failedTx = await prisma.transaction.update({
+      where: { id: txId },
+      data: { 
+        status: 'FAILED', 
+        failureReason: 'Insufficient balance', 
+        method, 
+        confidenceScore 
+      },
     });
-    if (!tx) throw Object.assign(new Error('Pending transaction not found'), { status: 404 });
+    return failedTx;
+  }
 
-    const user = await db.user.findUnique({ where: { id: userId } });
-    if (!user) throw Object.assign(new Error('User not found'), { status: 404 });
+  // 5. Process Transfer & Track Changes for Potential Rollback
+  let senderDecreased = false;
+  let receiverIncreased = false;
 
-    if (new Prisma.Decimal(user.walletBalance).lt(tx.amount)) {
-      const failed = await db.transaction.update({
-        where: { id: txId },
-        data: { status: 'FAILED', failureReason: 'Insufficient balance', method, confidenceScore },
-      });
-      return failed;
+  try {
+    // Decrease Sender
+    await prisma.user.update({
+      where: { id: sender.id },
+      data: { walletBalance: senderInitialBalance.minus(amount) },
+    });
+    senderDecreased = true;
+
+    // Increase Receiver
+    await prisma.user.update({
+      where: { id: receiver.id },
+      data: { walletBalance: receiverInitialBalance.plus(amount) },
+    });
+    receiverIncreased = true;
+
+    // 6. The Checker: Verify database state exactly matches math expectations
+    const currentSender = await prisma.user.findUnique({ where: { id: sender.id } });
+    const currentReceiver = await prisma.user.findUnique({ where: { id: receiver.id } });
+
+    const expectedSenderBalance = senderInitialBalance.minus(amount);
+    const expectedReceiverBalance = receiverInitialBalance.plus(amount);
+
+    if (
+      !new Prisma.Decimal(currentSender.walletBalance).equals(expectedSenderBalance) ||
+      !new Prisma.Decimal(currentReceiver.walletBalance).equals(expectedReceiverBalance)
+    ) {
+      throw new Error("Checker Failed: Wallet balances do not match expected mathematical outcome.");
     }
 
-    await db.user.update({
-      where: { id: userId },
-      data: { walletBalance: new Prisma.Decimal(user.walletBalance).minus(tx.amount) },
+    // 7. Success: Save encrypted transaction
+    return await prisma.transaction.update({
+      where: { id: txId },
+      data: { 
+        method, 
+        status, 
+        confidenceScore, 
+        failureReason: null,
+        encryptedData: encryptedTx.encryptedData,
+        iv: encryptedTx.iv,
+        authTag: encryptedTx.authTag
+      },
     });
 
-    return db.transaction.update({
+  } catch (error) {
+    console.error("Transaction Error, Initiating Rollback:", error.message);
+
+    // 8. The Rollback: Negate the transaction and revert balances safely
+    if (senderDecreased) {
+      await prisma.user.update({
+        where: { id: sender.id },
+        data: { walletBalance: senderInitialBalance },
+      });
+    }
+    if (receiverIncreased) {
+      await prisma.user.update({
+        where: { id: receiver.id },
+        data: { walletBalance: receiverInitialBalance },
+      });
+    }
+
+    // Mark as failed and store encryption
+    const failedTx = await prisma.transaction.update({
       where: { id: txId },
-      data: { method, status, confidenceScore, failureReason: null },
+      data: { 
+        status: 'FAILED', 
+        failureReason: 'System verification failed: ' + error.message, 
+        method, 
+        confidenceScore,
+        encryptedData: encryptedTx.encryptedData,
+        iv: encryptedTx.iv,
+        authTag: encryptedTx.authTag
+      },
     });
-  });
+
+    return failedTx;
+  }
 }
+
+// ============================================================================
+// ROUTES
+// ============================================================================
 
 router.get('/dashboard', async (req, res, next) => {
   try {
