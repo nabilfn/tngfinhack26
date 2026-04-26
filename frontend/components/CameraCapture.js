@@ -82,11 +82,6 @@ export default function CameraCapture({ onCapture, label = 'Capture face' }) {
           Stop camera
         </button>
       </div>
-
-      <label className="block text-sm text-slate-500">
-        Or upload image
-        <input type="file" accept="image/*" onChange={uploadFile} className="input mt-2" />
-      </label>
     </div>
   );
 }
