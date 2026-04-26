@@ -24,7 +24,7 @@ const client = new RekognitionClient({
 async function enrollFace({ userId, faceImageBase64 }) {
   const imageBytes = base64ToBuffer(faceImageBase64);
 
-  if (!hasAwsConfig() || process.env.REKOGNITION_LOCAL_FALLBACK === 'true') {
+  if (!hasAwsConfig() || process.env.REKOGNITION_LOCAL_FALLBACK === 'false') {
     return {
       provider: 'local-fallback',
       faceId: `local-${userId}`,
@@ -54,9 +54,17 @@ async function enrollFace({ userId, faceImageBase64 }) {
 async function compareFace({ enrolledImageBase64, verificationImageBase64 }) {
   if (!verificationImageBase64) throw new Error('Verification face image is required');
 
-  if (!hasAwsConfig() || process.env.REKOGNITION_LOCAL_FALLBACK === 'true' || !enrolledImageBase64) {
-    return { passed: true, confidence: 99, provider: 'local-fallback' };
-  }
+  if (!hasAwsConfig()) {
+  throw new Error('AWS Rekognition is not configured. Check backend .env credentials.');
+}
+
+if (process.env.REKOGNITION_LOCAL_FALLBACK === 'true') {
+  throw new Error('Rekognition local fallback is enabled. Disable it for real verification.');
+}
+
+if (!enrolledImageBase64) {
+  throw new Error('No enrolled face found for this user.');
+}
 
   const result = await client.send(new CompareFacesCommand({
     SourceImage: { Bytes: base64ToBuffer(enrolledImageBase64) },

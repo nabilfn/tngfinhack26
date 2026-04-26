@@ -26,7 +26,7 @@ services:
       DATABASE_URL: postgresql://face2go:face2go@postgres:5432/face2go
       FRONTEND_URL: http://localhost:3000
       JWT_SECRET: change-this-dev-secret
-      REKOGNITION_LOCAL_FALLBACK: "true"
+      REKOGNITION_LOCAL_FALLBACK: "false"
     depends_on:
       postgres:
         condition: service_healthy
