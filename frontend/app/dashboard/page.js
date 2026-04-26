@@ -79,7 +79,7 @@ export default function Dashboard() {
         <section className="card">
           <h3 className="font-bold">Quick actions</h3>
           <div className="mt-4 grid gap-3">
-            <Link className="btn-primary" href="/transactions/create">Create Transaction</Link>
+            <Link className="btn-primary" href="/transactions/create">Face Payment</Link>
             <Link className="btn-soft" href="/transactions/history">Transaction History</Link>
           </div>
         </section>
@@ -108,8 +108,10 @@ export default function Dashboard() {
         <section className="card md:col-span-3">
           <h3 className="font-bold">Latest transaction</h3>
           {latest ? (
-            <div className="mt-3 grid gap-2 text-slate-700 sm:grid-cols-4">
-              <p><span className="text-slate-500">Recipient</span><br /><b>{latest.recipient}</b></p>
+            <div className="mt-3 grid gap-2 text-slate-700 sm:grid-cols-5">
+              <p><span className="text-slate-500">Role</span><br /><b>{latest.role}</b></p>
+              <p><span className="text-slate-500">Payer</span><br /><b>{latest.payerEmail}</b></p>
+              <p><span className="text-slate-500">Receiver</span><br /><b>{latest.receiverEmail}</b></p>
               <p><span className="text-slate-500">Amount</span><br /><b>RM {Number(latest.amount).toFixed(2)}</b></p>
               <p><span className="text-slate-500">Method</span><br /><b>{latest.method || 'Pending'}</b></p>
               <p><span className="text-slate-500">Status</span><br /><b>{latest.status}</b></p>

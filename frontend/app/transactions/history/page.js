@@ -23,11 +23,16 @@ export default function TransactionHistory() {
             <div key={tx.id} className="rounded-2xl border border-slate-200 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="font-semibold">{tx.recipient}</p>
+                  <p className="font-semibold">
+                    {tx.role === 'PAYER' ? `Payment to ${tx.receiverEmail}` : `Request from ${tx.payerEmail}`}
+                  </p>
                   <p className="text-sm text-slate-500">{new Date(tx.createdAt).toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">Role: {tx.role}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold">RM {Number(tx.amount).toFixed(2)}</p>
+                  <p className={`font-bold ${tx.role === 'PAYER' ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {tx.role === 'PAYER' ? '-' : '+'} RM {Number(tx.amount).toFixed(2)}
+                  </p>
                   <p className="text-sm text-slate-500">{tx.status}</p>
                 </div>
               </div>

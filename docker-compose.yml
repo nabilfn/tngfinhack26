@@ -2,37 +2,43 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: face2go
+      POSTGRES_PASSWORD: face2go
       POSTGRES_DB: face2go
     ports:
       - "5433:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d face2go"]
+      test: ["CMD-SHELL", "pg_isready -U face2go -d face2go"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   backend:
     build: ./backend
-    env_file: ./backend/.env
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/face2go
     ports:
       - "4000:4000"
+    env_file:
+      - ./backend/.env
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgresql://face2go:face2go@postgres:5432/face2go
+      FRONTEND_URL: http://localhost:3000
+      JWT_SECRET: change-this-dev-secret
+      REKOGNITION_LOCAL_FALLBACK: "true"
     depends_on:
       postgres:
         condition: service_healthy
 
   frontend:
     build: ./frontend
-    env_file: ./frontend/.env
     ports:
       - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
     depends_on:
       - backend
 
 volumes:
-  pgdata:
+  postgres_data:

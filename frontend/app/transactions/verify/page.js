@@ -56,7 +56,8 @@ export default function VerifyTransaction() {
         setReceipt({
           message: res.message,
           transactionId: res.transaction.id,
-          recipient: res.transaction.recipient,
+          receiverEmail: res.transaction.receiverEmail,
+          payerEmail: res.transaction.payerEmail,
           amount: res.transaction.amount,
           status: res.transaction.status,
           method: res.transaction.method,
@@ -118,7 +119,8 @@ export default function VerifyTransaction() {
 
             <div className="mt-4 space-y-2 text-sm text-emerald-900">
               <p><span className="font-semibold">Status:</span> {receipt.status}</p>
-              <p><span className="font-semibold">Recipient:</span> {receipt.recipient}</p>
+              <p><span className="font-semibold">Payer:</span> {receipt.payerEmail}</p>
+              <p><span className="font-semibold">Receiver:</span> {receipt.receiverEmail}</p>
               <p><span className="font-semibold">Amount:</span> RM {Number(receipt.amount).toFixed(2)}</p>
               <p><span className="font-semibold">Method:</span> {receipt.method}</p>
 

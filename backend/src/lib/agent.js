@@ -3,9 +3,19 @@ const {
   InvokeModelCommand,
 } = require('@aws-sdk/client-bedrock-runtime');
 
-const client = new BedrockRuntimeClient({
+const clientConfig = {
   region: process.env.AWS_REGION || 'ap-southeast-1',
-});
+};
+
+if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+  clientConfig.credentials = {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    ...(process.env.AWS_SESSION_TOKEN && { sessionToken: process.env.AWS_SESSION_TOKEN }),
+  };
+}
+
+const client = new BedrockRuntimeClient(clientConfig);
 
 async function evaluateRisk(data) {
   if (process.env.BEDROCK_LOCAL_FALLBACK === 'true') {
