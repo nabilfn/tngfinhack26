@@ -77,12 +77,19 @@ export default function Dashboard() {
         </section>
 
         <section className="card">
-          <h3 className="font-bold">Quick actions</h3>
-          <div className="mt-4 grid gap-3">
-            <Link className="btn-primary" href="/transactions/create">Face Payment</Link>
-            <Link className="btn-soft" href="/transactions/history">Transaction History</Link>
-          </div>
-        </section>
+  <h3 className="font-bold">Quick actions</h3>
+  <div className="mt-4 grid gap-3">
+
+    <Link className="btn-primary" href="/transactions/face-pay">
+      FacePay (Scan & Pay)
+    </Link>
+
+    <Link className="btn-soft" href="/transactions/history">
+      Transaction History
+    </Link>
+
+  </div>
+</section>
 
         {showEnroll && (
           <section className="card md:col-span-3">
